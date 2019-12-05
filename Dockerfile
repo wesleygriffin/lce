@@ -37,7 +37,7 @@ WORKDIR $HOME/llvm-project
 RUN INSTALL="-DCMAKE_INSTALL_PREFIX=/opt/app-root/llvm-9" \
     && PROJECTS="-DLLVM_ENABLE_PROJECTS='clang;libcxx;libcxxabi'" \
     && scl enable devtoolset-8 -- cmake -Bbuild -G Ninja -DCMAKE_BUILD_TYPE=Release $INSTALL $PROJECTS llvm \
-    && cmake --build build
+    && cmake --build build --target install
 
 WORKDIR $HOME
 RUN rm -rf llvm-project $HOME/cmake-3.16.0-Linux-x86_64 $HOME/cmake-3.16.0-Linux-x86_64.tar.gz
