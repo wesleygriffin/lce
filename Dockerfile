@@ -14,36 +14,42 @@ EXPOSE 10240
 
 USER default
 
+WORKDIR $HOME
 RUN curl -LO https://github.com/Kitware/CMake/releases/download/v3.16.0/cmake-3.16.0-Linux-x86_64.tar.gz \
     && tar xf cmake-3.16.0-Linux-x86_64.tar.gz
 
-RUN git clone --depth 1 --branch v1.9.0 https://github.com/ninja-build/ninja \
-    && cd ninja \
-    && ./configure.py --bootstrap \
+ENV PATH=$HOME/cmake-3.16.0-Linux-x86_64/bin:$PATH
+WORKDIR $HOME
+RUN git clone --depth 1 --branch v1.9.0 https://github.com/ninja-build/ninja
+
+WORKDIR $HOME/ninja
+RUN ./configure.py --bootstrap \
     && mkdir /opt/app-root/bin \
-    && cp ninja /opt/app-root/bin \
-    && cd .. \
-    && rm -rf ninja
+    && cp ninja /opt/app-root/bin
 
-RUN git clone --depth 1 --branch release/9.x https://github.com/llvm/llvm-project \
-    && cd llvm-project \
-    && mkdir build \
-    && cd build \
-    && CMAKE="$HOME/cmake-3.16.0-Linux-x86_64/bin/cmake" \
-    && INSTALL="-DCMAKE_INSTALL_PREFIX=/opt/app-root/llvm-9" \
+WORKDIR $HOME
+RUN rm -rf ninja
+
+WORKDIR $HOME
+RUN git clone --depth 1 --branch release/9.x https://github.com/llvm/llvm-project
+
+WORKDIR $HOME/llvm-project
+RUN INSTALL="-DCMAKE_INSTALL_PREFIX=/opt/app-root/llvm-9" \
     && PROJECTS="-DLLVM_ENABLE_PROJECTS='clang;libcxx;libcxxabi'" \
-    && scl enable devtoolset-8 -- $CMAKE -G Ninja -DCMAKE_BUILD_TYPE=Release $INSTALL $PROJECTS ../llvm \
-    && ninja install \
-    && cd ../.. \
-    && rm -rf llvm-project
+    && scl enable devtoolset-8 -- cmake -Bbuild -G Ninja -DCMAKE_BUILD_TYPE=Release $INSTALL $PROJECTS llvm \
+    && cmake --build build
 
-RUN rm -rf $HOME/cmake-3.16.0-Linux-x86_64 $HOME/cmake-3.16.0-Linux-x86_64.tar.gz
+WORKDIR $HOME
+RUN rm -rf llvm-project $HOME/cmake-3.16.0-Linux-x86_64 $HOME/cmake-3.16.0-Linux-x86_64.tar.gz
 
-RUN git clone --depth 1 https://github.com/mattgodbolt/compiler-explorer ce \
-    && cd ce \
-    && scl enable rh-nodejs10 -- make dist
+ENV PATH=/opt/app-root/llvm-9/bin:$PATH
+WORKDIR $HOME
+RUN git clone --depth 1 https://github.com/mattgodbolt/compiler-explorer ce
 
-COPY c++.local.properties $HOME/ce/etc/config
+WORKDIR $HOME/ce
+RUN scl enable rh-nodejs10 -- make dist
+RUN rm etc/config/*
+COPY c++.local.properties etc/config
 
-CMD scl enable rh-nodejs10 -- \
+CMD scl enable devtoolset-7 devtoolset-8 rh-nodejs10 -- \
     ./node_modules/.bin/supervisor -w app.js,lib/etc/config -e 'js|node|properties' --exec node -- ./app.js 
