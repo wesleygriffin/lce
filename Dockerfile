@@ -14,11 +14,12 @@ EXPOSE 10240
 
 USER default
 
-WORKDIR $HOME
-RUN curl -LO https://github.com/Kitware/CMake/releases/download/v3.16.0/cmake-3.16.0-Linux-x86_64.tar.gz \
-    && tar xf cmake-3.16.0-Linux-x86_64.tar.gz
+ARG CMAKE_VER=3.16.0
+ENV CMAKE_URL=https://github.com/Kitware/CMake/releases/download/v$CMAKE_VER/cmake-$CMAKE_VER-Linux-x86_64.tar.gz
 
-ENV PATH=$HOME/cmake-3.16.0-Linux-x86_64/bin:$PATH
+WORKDIR $HOME
+RUN curl -LO $CMAKE_URL && tar xf cmake-$CMAKE_VER-Linux-x86_64.tar.gz
+
 WORKDIR $HOME
 RUN git clone --depth 1 --branch v1.9.0 https://github.com/ninja-build/ninja
 
@@ -28,21 +29,24 @@ RUN ./configure.py --bootstrap \
     && cp ninja /opt/app-root/bin
 
 WORKDIR $HOME
-RUN rm -rf ninja
+RUN git clone https://github.com/llvm/llvm-project
 
-WORKDIR $HOME
-RUN git clone --depth 1 --branch release/9.x https://github.com/llvm/llvm-project
+ENV CMAKE=$HOME/cmake-3.16.0-Linux-x86_64/bin/cmake \
+    LLVM_PROJECTS="-DLLVM_ENABLE_PROJECTS='clang;libcxx;libcxxabi'" \
+    LLVM_TARGETS="-DLLVM_TARGETS_TO_BUILD='X86'" \
+    LLVM_OPTIONS="-G Ninja -DCMAKE_BUILD_TYPE=Release"
 
 WORKDIR $HOME/llvm-project
-RUN INSTALL="-DCMAKE_INSTALL_PREFIX=/opt/app-root/llvm-9" \
-    && PROJECTS="-DLLVM_ENABLE_PROJECTS='clang;libcxx;libcxxabi'" \
-    && scl enable devtoolset-8 -- cmake -Bbuild -G Ninja -DCMAKE_BUILD_TYPE=Release $INSTALL $PROJECTS llvm \
-    && cmake --build build --target install
+RUN git checkout release/9.x \
+    && INSTALL="-DCMAKE_INSTALL_PREFIX=/opt/app-root/llvm-9" \
+    && scl enable devtoolset-8 -- $CMAKE -Bbuild $LLVM_OPTIONS $INSTALL $LLVM_PROJECTS $LLVM_TARGETS llvm \
+    && $CMAKE --build build --target install
 
-WORKDIR $HOME
-RUN rm -rf llvm-project $HOME/cmake-3.16.0-Linux-x86_64 $HOME/cmake-3.16.0-Linux-x86_64.tar.gz
+RUN git checkout master \
+    && INSTALL="-DCMAKE_INSTALL_PREFIX=/opt/app-root/llvm-trunk" \
+    && scl enable devtoolset-8 -- $CMAKE -Bbuild $LLVM_OPTIONS $INSTALL $LLVM_PROJECTS $LLVM_TARGETS llvm \
+    && $CMAKE --build build --target install
 
-ENV PATH=/opt/app-root/llvm-9/bin:$PATH
 WORKDIR $HOME
 RUN git clone --depth 1 https://github.com/mattgodbolt/compiler-explorer ce
 
@@ -51,5 +55,5 @@ RUN scl enable rh-nodejs10 -- make dist
 RUN rm etc/config/*
 COPY c++.local.properties etc/config
 
-CMD scl enable devtoolset-7 devtoolset-8 rh-nodejs10 -- \
+CMD scl enable rh-nodejs10 -- \
     ./node_modules/.bin/supervisor -w app.js,lib/etc/config -e 'js|node|properties' --exec node -- ./app.js 
